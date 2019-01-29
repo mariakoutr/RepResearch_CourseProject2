@@ -1,0 +1,111 @@
+# Reproducible Research Course Project 2
+# Health and Econimic Consequences of Storms ans Severe Weather Events in U.S. 
+
+## Synopsis 
+This project explores the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property an crop damage. 
+The analysis that is made estimates which types of weather events have the greatest impact on the public health and the economic damage on properties and crops respectively, across the United States. 
+
+## Data Processing 
+We obtained the data from the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage. https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2 
+The events in the database start in the year 1950 and end in November 2011. 
+
+### Downloading and reading the data 
+First we download the data and read the data.csv file. 
+
+```{r echo=TRUE}
+url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+download.file(url, destfile = "data.bz2", method = "curl")
+data <- read.csv(bzfile("data.bz2"))
+```
+After we read the data we check the first few rows. There are 902297 rows in this dataset. 
+```{r echo=TRUE}
+dim(data)
+head(data)
+```
+Load libraries. 
+```{r}
+library(knitr)
+library(markdown)
+library(rmarkdown)
+library(plyr)
+library(stats)
+library(ggplot2)
+library(reshape2)
+```
+### Subset and process the data
+
+We subsetted the data with the variables needed for this analysis.
+We make a new data frame with the following variables: 
+- EVTYPE: Type of event   
+- FATALITIES: Number of fatalities  
+- INJURIES: Number of injuries  
+- PROPDMG: Propery Damage  
+- PROPDMGEXP: Units for Property Damage (K,B,M)
+- CROPDMG: Crop Damage 
+- CROPDMGEXP: Units for Crop Damage (K,B,M)
+```{r}
+names(data)
+dataUse<- data[,c("EVTYPE", "FATALITIES","INJURIES","PROPDMG","PROPDMGEXP","CROPDMG","CROPDMGEXP")]
+```
+Calculate the damage property and crop values. 
+First we replace PROPDMGEXP and CROPDMGEXP values with the appropriate multipliers and calulate the damage. 
+```{r}
+dataUse$PROPDMGEXP <- as.character(dataUse$PROPDMGEXP) 
+dataUse$CROPDMGEXP <- as.character(dataUse$CROPDMGEXP)
+dataUse$PROPDMGEXP <- mapvalues(dataUse$PROPDMGEXP, from = c("" , "-", "?" ,"+", "0", "1", "2", "3", "4", "5", "6", "7", "8", "B", "h", "H", "K","m", "M"), to=c("0","0","0","1","10","10","10","10","10","10","10","10","10", "1000000000","100","100","1000","1000000","1000000"))
+dataUse$PROPDMGEXP<- as.numeric(dataUse$PROPDMGEXP)
+dataUse$PROPDMGVAL <- dataUse$PROPDMG*dataUse$PROPDMGEXP
+
+dataUse$CROPDMGEXP <- mapvalues(dataUse$CROPDMGEXP, from = c("" , "M" ,"K", "m", "B", "?", "0", "k", "2"), to = c("0","1000000","1000","1000000","1000000000","0","10","1000","10"))
+dataUse$CROPDMGEXP<- as.numeric(dataUse$CROPDMGEXP)
+dataUse$CROPDMGVAL <- dataUse$CROPDMG*dataUse$CROPDMGEXP
+```
+
+## Results 
+
+### Which types of events is most harmful for bublic health in the U.S. 
+Calculate the total number of fatalities per event, and the total number of injuries per event. 
+```{r}
+fatalitiesSum <- aggregate(FATALITIES ~ EVTYPE, data = dataUse, sum)
+injuriesSum <- aggregate(INJURIES ~ EVTYPE, data = dataUse, sum)
+fatalitiesSum <- fatalitiesSum[order(fatalitiesSum$FATALITIES, decreasing = TRUE),]
+injuriesSum <- injuriesSum[order(injuriesSum$INJURIES, decreasing = TRUE),]
+```
+Plot the number of fatalities and injuries for the events for the 10 highest number of fatalities and injuries respectively. 
+
+```{r}
+par(mfrow = c(1,2), mar= c(10,4,0,0), oma = c(2,0,2,0))
+barplot(fatalitiesSum$FATALITIES[1:10], names.arg = fatalitiesSum$EVTYPE[1:10],las = 3, ylab = "Number of fatalities")
+barplot(injuriesSum$INJURIES[1:10], names.arg = injuriesSum$EVTYPE[1:10],las = 3, ylab = "Number of injuries")
+title("Top 10 events with the highest number of fatalities and injuries in the U.S.", outer = TRUE)
+mtext('Event type', side = 1, outer = TRUE, line =1)
+```
+
+### Which types of events have the greatest economic consequences in the U.S 
+
+Calculate the total value of damage in property and crop per event type, as well as the total value of damage for both and select the 10 event types with the highest total economic damage. 
+
+```{r}
+dataUse$DMGTOTAL <- dataUse$PROPDMGVAL + dataUse$CROPDMGVAL
+economicdata <- aggregate(cbind(PROPDMGVAL,CROPDMGVAL,DMGTOTAL)~ EVTYPE, data = dataUse, sum)
+economicdata <- economicdata[order(economicdata$DMGTOTAL,decreasing = TRUE),]
+ecdatatop10 <- economicdata[1:10,]
+```
+
+Plot the 10 event types with the highest total economic damage, along with the damage in property and crop for every event. 
+
+```{r}
+economicDataTopMelt <- melt(ecdatatop10, id.vars="EVTYPE")
+gg <- ggplot(economicDataTopMelt, aes(x=reorder(EVTYPE,-value), y = value))
+gg <- gg + geom_bar(stat = "identity", aes(fill = variable), position = "dodge")
+gg <- gg + scale_y_sqrt("Economic Damage [$]")
+gg <- gg + xlab("Event type")
+gg <- gg + theme(axis.text.x = element_text(angle=45, hjust=1))
+gg <- gg + ggtitle("Top 10 event types with the highest economic damage value in the U.S. ")
+plot(gg)
+```
+
+### Coclusions 
+
+- According to the above analysis, the most harmful for the public health event type is Tornado, which is responsible for the maximun number of fatalitites as well as injuries, in the U.S. 
+- According to the above analysis, the event type which caused the maximum total economic damage (property damage + crop damage) is flood. 
